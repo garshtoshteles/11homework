@@ -1,15 +1,14 @@
-const util = require("util"),
-  cTable = require("console.table"),
+const cTable = require("console.table"),
   inquirer = require("inquirer"),
   mysql = require("mysql"),
-  connection = mysql.createConnection({
+  con = mysql.createConnection({
     host: "localhost",
     port: 3306,
     user: "root",
     password: "keroKero445",
     database: "employee_db",
   });
-connection.connect((a) => {
+con.connect((a) => {
   if (a) throw a;
   loadMainPrompt();
 });
@@ -72,14 +71,14 @@ function loadMainPrompt() {
     });
 }
 function viewEmployees() {
-  connection.query("SELECT * FROM employee", (err, res) => {
+  con.query("SELECT * FROM employee", (err, res) => {
     console.table(res);
+    loadMainPrompt();
   });
-  loadMainPrompt();
 }
 function viewEmployeesByDepartment() {
   const deptRoleIDs = [];
-  connection.query("SELECT * FROM department", (err, res) => {
+  con.query("SELECT * FROM department", (err, res) => {
     const deptChoices = res.map((row) => row.name);
     inquirer
       .prompt([
@@ -92,22 +91,23 @@ function viewEmployeesByDepartment() {
       ])
       .then(({ dept }) => {
         // in here goes what will be done with the dept with the dept being "dept"
-        connection.query(
+        con.query(
           "SELECT * FROM department WHERE ?",
           { name: dept },
           (err, res) => {
-            connection.query(
+            con.query(
               "SELECT * FROM role WHERE ?",
               { department_id: res[0].id },
               (err, res) => {
                 res.forEach((row) => {
                   deptRoleIDs.push(row.id);
                 });
-                connection.query(
+                con.query(
                   "SELECT * FROM employee WHERE " +
                     makeIDsForQuery(deptRoleIDs),
                   (err, res) => {
                     console.table(res);
+                    loadMainPrompt();
                   }
                 );
               }
@@ -125,11 +125,26 @@ function makeIDsForQuery(array) {
   return idEqualsString;
 }
 
+function makeValString(array) {
+  let valString = "(";
+  let iter = 0;
+  array.forEach((element) => {
+    if (iter > 0) {
+      valString += ",";
+    }
+    valString += "'" + element + "'";
+    iter += 1;
+  });
+  valString += ")";
+  console.log(valString);
+  return valString;
+}
+
 function viewEmployeesByManager() {
   const managerIDs = [];
   const managerNames = [];
   // with the one call, i could offer up in a table only the ones with a role_id that is someone's manager id
-  connection.query("SELECT * FROM employee", (err, res) => {
+  con.query("SELECT * FROM employee", (err, res) => {
     res.forEach((row) => {
       if (!row.manager_id) {
         managerIDs.push(row.role_id);
@@ -148,20 +163,168 @@ function viewEmployeesByManager() {
       .then((a) => {
         //in here is what is done with the answer from the managers prompt
         let activeManagerID = managerIDs[managerNames.indexOf(a.manager)];
-        connection.query(
+        con.query(
           "SELECT * FROM employee WHERE ?",
           { manager_id: activeManagerID },
           (err, res) => {
             console.table(res);
+            loadMainPrompt();
           }
         );
       });
   });
 }
-function addEmployee() {}
-function removeEmployee() {}
-function updateEmployeeRole() {}
-function updateEmployeeManager() {}
+function addEmployee() {
+  // (first_name, last_name, role_id, manager_id)
+  con.query("SELECT id, title FROM role", (err, res) => {
+    console.log("\n");
+    console.table(res);
+  });
+  con.query("SELECT id, first_name, last_name FROM employee", (err, res) =>
+    console.table(res)
+  );
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "firstName",
+        message: "Enter employee's first name.",
+      },
+      {
+        type: "input",
+        name: "lastName",
+        message: "Enter employee's last name.",
+      },
+      {
+        type: "input",
+        name: "roleID",
+        message:
+          "Enter the ID of the employee's role using the first table above.",
+      },
+      {
+        type: "input",
+        name: "managerID",
+        message:
+          "Enter the ID of the employee's manager using the second table above. Leave this blank if they do not have a manager.",
+        default: null,
+      },
+    ])
+    .then((a) => {
+      // this is where i will put the answer into the db using a query
+      let query = "";
+      if (a.managerID) {
+        const b = [a.firstName, a.lastName, a.roleID, a.managerID];
+        query +=
+          "INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ";
+        query += makeValString(b);
+      } else {
+        const b = [a.firstName, a.lastName, a.roleID];
+        query +=
+          "INSERT INTO employee (first_name, last_name, role_id) VALUES ";
+        query += makeValString(b);
+      }
+      con.query(query, (err, res) => {
+        // the callback
+        console.log("Employee successfully added.");
+        loadMainPrompt();
+      });
+    });
+}
+function removeEmployee() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "firstName",
+        message:
+          "Please enter the first name of the employee you wish to remove, capitalized properly.",
+      },
+      {
+        type: "input",
+        name: "lastName",
+        message:
+          "Please enter the last name of the employee you wish to remove, capitalized properly.",
+      },
+    ])
+    .then((a) => {
+      con.query(
+        "DELETE FROM employee WHERE ? AND ?",
+        [{ first_name: a.firstName }, { last_name: a.lastName }],
+        (err, res) => {
+          if (err) throw err;
+          // callback
+          console.log("Successfully removed employee.");
+          loadMainPrompt();
+        }
+      );
+    });
+}
+function updateEmployeeRole() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "firstName",
+        message:
+          "Please enter the first name of the employee whose role you'd like to update.",
+      },
+      {
+        type: "input",
+        name: "lastName",
+        message:
+          "Please enter the last name of the employee whose role you'd like to update.",
+      },
+
+      {
+        type: "number",
+        name: "roleID",
+        message:
+          "Please enter the number of the role you'd like the employee to have.",
+      },
+    ])
+    .then((a) => {
+      //callback
+      con.query(
+        "UPDATE employee SET ? WHERE ? AND ?",
+        [
+          { role_id: a.roleID },
+          { first_name: a.firstName },
+          { last_name: a.lastName },
+        ],
+        (err, res) => {
+          // callback
+          loadMainPrompt();
+        }
+      );
+    });
+}
+function updateEmployeeManager() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "firstName",
+        message:
+          "Please enter the first name of the employee whose role you'd like to update.",
+      },
+      {
+        type: "input",
+        name: "lastName",
+        message:
+          "Please enter the last name of the employee whose role you'd like to update.",
+      },
+
+      {
+        type: "number",
+        name: "roleID",
+        message:
+          "Please enter the ID of the manager you'd like the employee to have. If you'd like them to be unmanaged, leave this blank.",
+      },
+    ])
+    .then((a) => {
+      // callback
+    });
+}
 function viewDepartments() {}
 function addDepartment() {}
 function removeDepartment() {}
