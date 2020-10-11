@@ -17,7 +17,7 @@ function loadMainPrompt() {
     .prompt([
       {
         type: "list",
-        name: "todo1",
+        name: "Action",
         nessage: "What would you like to do?",
         choices: [
           "View all employees",
@@ -37,8 +37,7 @@ function loadMainPrompt() {
       },
     ])
     .then((a) => {
-      console.log("answer incoming:", a.todo1);
-      switch (a.todo1) {
+      switch (a.Action) {
         case "View all employees":
           return viewEmployees();
         case "View employees by dept":
@@ -72,6 +71,7 @@ function loadMainPrompt() {
 }
 function viewEmployees() {
   con.query("SELECT * FROM employee", (err, res) => {
+    if (err) throw err;
     console.table(res);
     loadMainPrompt();
   });
@@ -79,6 +79,7 @@ function viewEmployees() {
 function viewEmployeesByDepartment() {
   const deptRoleIDs = [];
   con.query("SELECT * FROM department", (err, res) => {
+    if (err) throw err;
     const deptChoices = res.map((row) => row.name);
     inquirer
       .prompt([
@@ -90,15 +91,16 @@ function viewEmployeesByDepartment() {
         },
       ])
       .then(({ dept }) => {
-        // in here goes what will be done with the dept with the dept being "dept"
         con.query(
           "SELECT * FROM department WHERE ?",
           { name: dept },
           (err, res) => {
+            if (err) throw err;
             con.query(
               "SELECT * FROM role WHERE ?",
               { department_id: res[0].id },
               (err, res) => {
+                if (err) throw err;
                 res.forEach((row) => {
                   deptRoleIDs.push(row.id);
                 });
@@ -106,6 +108,7 @@ function viewEmployeesByDepartment() {
                   "SELECT * FROM employee WHERE " +
                     makeIDsForQuery(deptRoleIDs),
                   (err, res) => {
+                    if (err) throw err;
                     console.table(res);
                     loadMainPrompt();
                   }
@@ -136,14 +139,12 @@ function makeValString(array) {
     iter += 1;
   });
   valString += ")";
-  console.log(valString);
   return valString;
 }
 
 function viewEmployeesByManager() {
   const managerIDs = [];
   const managerNames = [];
-  // with the one call, i could offer up in a table only the ones with a role_id that is someone's manager id
   con.query("SELECT * FROM employee", (err, res) => {
     res.forEach((row) => {
       if (!row.manager_id) {
@@ -161,7 +162,6 @@ function viewEmployeesByManager() {
         },
       ])
       .then((a) => {
-        //in here is what is done with the answer from the managers prompt
         let activeManagerID = managerIDs[managerNames.indexOf(a.manager)];
         con.query(
           "SELECT * FROM employee WHERE ?",
@@ -175,14 +175,11 @@ function viewEmployeesByManager() {
   });
 }
 function addEmployee() {
-  // (first_name, last_name, role_id, manager_id)
   con.query("SELECT id, title FROM role", (err, res) => {
+    if (err) throw err;
     console.log("\n");
     console.table(res);
   });
-  con.query("SELECT id, first_name, last_name FROM employee", (err, res) =>
-    console.table(res)
-  );
   inquirer
     .prompt([
       {
@@ -210,7 +207,6 @@ function addEmployee() {
       },
     ])
     .then((a) => {
-      // this is where i will put the answer into the db using a query
       let query = "";
       if (a.managerID) {
         const b = [a.firstName, a.lastName, a.roleID, a.managerID];
@@ -224,7 +220,7 @@ function addEmployee() {
         query += makeValString(b);
       }
       con.query(query, (err, res) => {
-        // the callback
+        if (err) throw err;
         console.log("Employee successfully added.");
         loadMainPrompt();
       });
@@ -252,7 +248,6 @@ function removeEmployee() {
         [{ first_name: a.firstName }, { last_name: a.lastName }],
         (err, res) => {
           if (err) throw err;
-          // callback
           console.log("Successfully removed employee.");
           loadMainPrompt();
         }
@@ -283,7 +278,6 @@ function updateEmployeeRole() {
       },
     ])
     .then((a) => {
-      //callback
       con.query(
         "UPDATE employee SET ? WHERE ? AND ?",
         [
@@ -292,7 +286,7 @@ function updateEmployeeRole() {
           { last_name: a.lastName },
         ],
         (err, res) => {
-          // callback
+          if (err) throw err;
           loadMainPrompt();
         }
       );
@@ -316,19 +310,131 @@ function updateEmployeeManager() {
 
       {
         type: "number",
-        name: "roleID",
+        name: "managerID",
         message:
           "Please enter the ID of the manager you'd like the employee to have. If you'd like them to be unmanaged, leave this blank.",
       },
     ])
     .then((a) => {
-      // callback
+      let b = a.managerID;
+      if (!b) {
+        b = null;
+      }
+      con.query(
+        "UPDATE employee SET ? WHERE ? AND ?",
+        [
+          { manager_id: b },
+          { first_name: a.firstName },
+          { last_name: a.lastName },
+        ],
+        (err, res) => {
+          if (err) throw err;
+          loadMainPrompt();
+        }
+      );
     });
 }
-function viewDepartments() {}
-function addDepartment() {}
-function removeDepartment() {}
-function viewRoles() {}
-function addRole() {}
-function removeRole() {}
-function quit() {}
+function viewDepartments() {
+  con.query("SELECT * FROM department", (err, res) => {
+    if (err) throw err;
+    console.table(res);
+    loadMainPrompt();
+  });
+}
+function addDepartment() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "newDept",
+        message: "Please enter the name of the department you'd like to add.",
+      },
+    ])
+    .then(({ newDept }) => {
+      let query = "INSERT INTO department (name) VALUES ";
+      query += makeValString([newDept]);
+      con.query(query, (err, res) => {
+        if (err) throw err;
+        loadMainPrompt();
+      });
+    });
+}
+function removeDepartment() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "dept",
+        message:
+          "Please enter the name of the department you'd like to remove.",
+      },
+    ])
+    .then(({ dept }) => {
+      con.query(
+        "DELETE FROM department WHERE ?",
+        { name: dept },
+        (err, res) => {
+          if (err) throw err;
+          console.log("Successfully removed that department.");
+          loadMainPrompt();
+        }
+      );
+    });
+}
+function viewRoles() {
+  con.query("SELECT * FROM role", (err, res) => {
+    if (err) throw err;
+    console.table(res);
+    loadMainPrompt();
+  });
+}
+function addRole() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "newRole",
+        message: "Please enter the title of the role you'd like to add.",
+      },
+      {
+        type: "input",
+        name: "newRoleSal",
+        message: "Please enter the salary of the role you'd like to add.",
+      },
+      {
+        type: "number",
+        name: "newRoleDept",
+        message:
+          "Please enter the id of the department in which the role will be.",
+      },
+    ])
+    .then((a) => {
+      let query = "INSERT INTO role (title, salary, department_id) VALUES ";
+      query += makeValString([a.newRole, a.newRoleSal, a.newRoleDept]);
+      con.query(query, (err, res) => {
+        if (err) throw err;
+        console.log("Successfully added role.");
+        loadMainPrompt();
+      });
+    });
+}
+function removeRole() {
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        name: "role",
+        message: "Please enter the name of the role you'd like to remove.",
+      },
+    ])
+    .then(({ role }) => {
+      con.query("DELETE FROM role WHERE ?", { title: role }, (err, res) => {
+        if (err) throw err;
+        console.log("Successfully removed role.");
+        loadMainPrompt();
+      });
+    });
+}
+function quit() {
+  process.exit();
+}
