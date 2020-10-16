@@ -1,6 +1,5 @@
 # Employee Management System (EMS)
 
-
   This application runs in terminal and allows the creation, reading, updating, and deleting of employees, roles, departments, and managerial status. 
 
   ## Table of Contents 
@@ -33,9 +32,7 @@
   
   ## Credits  
   
-  This was made completely by yours truly in just two days,
-  
-  
+  This was made completely by yours truly in just two days.
   
   ## Contributing
   
